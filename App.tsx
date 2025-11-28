@@ -1,12 +1,9 @@
-
 import React, { useState, useEffect } from 'react';
 import ImageUploader from './components/ImageUploader';
 import GeneratedImage from './components/GeneratedImage';
-import { AuthScreens } from './components/AuthScreens';
-import { AppStatus, ImageData, GenerationResult, User } from './types';
-import { generateImageFromReference } from './services/geminiService';
-import { Wand2, Sparkles, LayoutGrid, Home, PenTool, Zap, Building2, Armchair, Box, Plus, Cpu, Settings2, ImagePlus, Globe, Layers, LogOut, User as UserIcon, Crown, Shield, RefreshCw } from 'lucide-react';
-import { AdminDashboard } from './components/AdminDashboard';
+import { AppStatus, ImageData, GenerationResult } from './types';
+import { generateImageFromReference, enhancePrompt as enhancePromptService } from './services/geminiService';
+import { Wand2, Sparkles, Zap, Cpu, Settings2, ImagePlus, Globe, Key, Link, Brush, Undo2, RefreshCw, PenTool, Image as ImageIcon, BookOpen, Loader2 } from 'lucide-react';
 
 // Translations
 const TRANSLATIONS = {
@@ -25,7 +22,9 @@ const TRANSLATIONS = {
     required: "Required",
     promptLabel: "Prompt (Command)",
     promptPlaceholder: "Describe what you want to change...",
-    refineLabel: "Refine Result (Additional)",
+    enhanceButton: "Magic Enhance",
+    enhancing: "Improving...",
+    refineLabel: "Additional Command (Refine)",
     refinePlaceholder: "Add details to the generated image (e.g. add a red car, change sky color)...",
     styleReference: "Style Reference",
     optional: "Optional",
@@ -35,13 +34,17 @@ const TRANSLATIONS = {
     newProject: "NEW PROJECT",
     mode: "MODE",
     startNew: "Start a new project? Current progress will be lost.",
-    enterKey: "Please enter your Google Gemini API Key in the sidebar settings.",
+    enterKey: "Please connect your Google Gemini API Key.",
     enterPrompt: "Please enter a prompt or select a preset.",
     unexpectedError: "An unexpected error occurred during generation.",
-    proPlan: "PRO PLAN",
-    manageSub: "Manage Subscription",
-    logout: "Log Out",
-    adminDashboard: "Admin Dashboard"
+    brushTool: "Brush Tool (Edit)",
+    brushSize: "Size",
+    brushColor: "Color",
+    undo: "Undo",
+    apiKeyStatus: "API Key Status",
+    connected: "Connected",
+    customRules: "My Style (AI Memory)",
+    customRulesPlaceholder: "Teach AI your preference here. E.g., 'Always use warm lighting, modern luxury style, 8k resolution.' (This will be applied to every generation)"
   },
   TH: {
     aiSettings: "ตั้งค่า AI",
@@ -58,6 +61,8 @@ const TRANSLATIONS = {
     required: "จำเป็น",
     promptLabel: "คำสั่ง (Prompt)",
     promptPlaceholder: "อธิบายสิ่งที่ต้องการแก้ไข...",
+    enhanceButton: "เสกคำสั่งสวย (AI ช่วยเขียน)",
+    enhancing: "กำลังปรับปรุง...",
     refineLabel: "คำสั่งเพิ่มเติม (ปรับแต่งต่อจากรูปที่ได้)",
     refinePlaceholder: "พิมพ์เพื่อเพิ่มรายละเอียดลงในรูปที่สร้างเสร็จแล้ว (เช่น เติมรถสีแดง, เปลี่ยนสีท้องฟ้า)...",
     styleReference: "รูปอ้างอิงสไตล์",
@@ -68,45 +73,44 @@ const TRANSLATIONS = {
     newProject: "โปรเจคใหม่",
     mode: "โหมด",
     startNew: "เริ่มโปรเจคใหม่หรือไม่? ข้อมูลปัจจุบันจะหายไป",
-    enterKey: "กรุณากรอก Google Gemini API Key ในแถบตั้งค่าด้านซ้าย",
+    enterKey: "กรุณาเชื่อมต่อ Google Gemini API Key ก่อนใช้งาน",
     enterPrompt: "กรุณากรอกคำสั่งหรือเลือกคำสั่งด่วน",
     unexpectedError: "เกิดข้อผิดพลาดในการสร้างรูปภาพ",
-    proPlan: "สมาชิก PRO",
-    manageSub: "จัดการสมาชิก",
-    logout: "ออกจากระบบ",
-    adminDashboard: "แดชบอร์ดผู้ดูแล"
+    brushTool: "แปรงแก้ไข (ระบายตำแหน่ง)",
+    brushSize: "ขนาด",
+    brushColor: "สี",
+    undo: "ย้อนกลับ",
+    apiKeyStatus: "สถานะคีย์ API",
+    connected: "เชื่อมต่อแล้ว",
+    customRules: "สไตล์ของฉัน (ความจำ AI)",
+    customRulesPlaceholder: "สอนให้ AI จำสไตล์ของคุณที่นี่ เช่น 'ชอบแสงอุ่นๆ, สไตล์โมเดิร์นลักชูรี่, ขอภาพชัดระดับ 8k เสมอ' (ข้อความนี้จะถูกแนบไปกับทุกคำสั่ง)"
   }
 };
 
 // --- PRESET DATA ---
 const EXTERIOR_PRESETS = [
+  { id: 'luxury-nordic-masterpiece', label: '⭐ LUXURY NORDIC (MASTER)', subtitle: 'Detailed Landscape & Driveway', thSubtitle: 'บ้านหรูนอร์ดิก (เน้นรายละเอียด)', prompt: 'Architectural Masterpiece. A grand modern Nordic house with a high gable roof, white walls, and grey stone accents. A wide, meticulously detailed cobblestone or stamped concrete driveway leads to a spacious garage (featuring luxury cars parked). The foreground is lush and vibrant, featuring colorful flower beds (reds, oranges, yellows) lining the driveway, and a perfectly manicured green lawn. Framed by tall, mature tropical trees providing depth. Bright, sunny, high-contrast professional photography style with sharp shadows. 8k, ultra-realistic.' },
   { id: 'sketch-to-photo', label: 'SKETCH TO PHOTO', subtitle: 'Convert sketch to realism', thSubtitle: 'แปลงภาพร่างเป็นภาพจริง', prompt: 'Convert this architectural sketch into a photorealistic rendering. High detail, realistic lighting, natural materials, clear blue sky.' },
-  { id: 'lakeside-farmhouse', label: 'LAKESIDE FARMHOUSE', subtitle: 'Modern Cabin', thSubtitle: 'บ้านโมเดิร์นริมทะเลสาบ', prompt: 'Minimalist Modern Farmhouse Architecture, stunning lakeside house, single-story, long gabled form, exterior clad in natural light-toned vertical wood siding, steep-pitched dark grey metal roof, tall black metal chimney, large floor-to-ceiling black-framed glass sliding doors, simple outdoor patio. Situated in a vast landscape with long, dry golden tussock grasses in the foreground and a neatly mowed green lawn. Backdrop of massive, rugged, towering mountain ranges and rolling grassy foothills, with a deep blue lake visible in the distance. Clear pale blue sky. Golden hour lighting, bright natural daylight, casting sharp shadows. Wide-angle horizontal full-shot, photorealistic, extremely high detail' },
+  { id: 'modern-tropical-luxury', label: 'MODERN TROPICAL', subtitle: 'Luxury White & Green', thSubtitle: 'บ้านหรูโมเดิร์นทรอปิคอล', prompt: 'High-end Modern Tropical & Nordic-inspired Architecture. Pristine white stucco exterior walls with subtle grey stone accents. Steep gable roofs with dark grey tiles. Large, expansive floor-to-ceiling glass windows and doors connecting indoor and outdoor spaces. The house sits on a meticulously manicured vibrant green lawn. Landscaping includes mature tropical trees (like rain trees or palm trees) providing shade, low hedges, and colorful flower beds. A wide, clean concrete driveway leads to the house. The atmosphere is serene, luxurious, and bright with clear natural daylight and a blue sky. Photorealistic architectural rendering, 8k resolution.' },
+  { id: 'lakeside-farmhouse', label: 'LAKESIDE FARMHOUSE', subtitle: 'Modern Cabin', thSubtitle: 'บ้านโมเดิร์นริมทะเลสาบ', prompt: 'Minimalist Modern Farmhouse Architecture, stunning lakeside house, single-story, long gabled form, exterior clad in natural light-toned vertical wood siding, steep-pitched dark grey metal roof, tall black-framed glass sliding doors.' },
+  { id: 'modern-rustic-luxury', label: 'MODERN RUSTIC', subtitle: 'Luxurious Stone & Wood', thSubtitle: 'บ้านหรูสไตล์รัสติก', prompt: 'Subject: A stunning two-story contemporary rustic home, nestled harmoniously within a natural landscape. Architecture: Multi-faceted design with clean lines, mixing traditional gable and mono-pitch roofs with wide overhangs. Exterior walls feature irregular stone masonry and warm natural wood siding. Dark standing-seam metal roof. Windows: Expansive floor-to-ceiling windows with dark frames, allowing warm interior light to spill out. Lighting: Twilight/Dusk setting. Warm interior glow, exterior up-lighting highlighting stone textures. Landscape: Lush natural landscape, curving flagstone pathway, manicured lawns mixed with wilder ornamental grasses and mature trees.' },
+  { id: 'nordic-barn', label: 'NORDIC BARN', subtitle: 'Modern White & Dark', thSubtitle: 'บ้านสไตล์นอร์ดิก', prompt: 'A bright, sunny outdoor scene showcasing a pristine, expansive green lawn that dominates the foreground and extends towards the background. To the left, a large, mature tree with visible roots and a supportive wooden structure stands prominently, casting soft shadows. In the mid-ground, a sleek, rectangular swimming pool with clear blue water is bordered by a narrow, well-maintained garden bed featuring small green bushes and delicate white flowers. A clean, grey concrete walkway/patio area leads up to the house entrance, connecting seamlessly with a wide, grey concrete driveway on the right side of the frame. The background is filled with various healthy green trees of different sizes and species, creating a lush canopy, along with a neatly trimmed dark green hedge that separates the property from adjacent houses, which are subtly visible in the distance. The overall atmosphere is one of serenity, modernity, and natural beauty, under a clear, bright sky.' },
+  { id: 'contemporary-stone-garden', label: 'CONTEMPORARY STONE', subtitle: 'Luxury Home & Zen Garden', thSubtitle: 'บ้านโมเดิร์นสวนญี่ปุ่น', prompt: 'A magnificent 2-story contemporary home, its facade a sophisticated blend of stone and dark wood accents, stands proudly amidst a lush, meticulously manicured garden. The architecture features clean lines, expansive windows that reflect the surrounding greenery, and an inviting wooden front door. A gracefully winding pathway of light-colored stone leads to the entrance, flanked by vibrant flower beds bursting with color and diverse shrubbery. Tall, mature trees with verdant canopies frame the house, providing both shade and a sense of established elegance.\n\nThe garden is a masterpiece of landscape design, showcasing a serene Japanese aesthetic. A large, ancient tree with a gnarled trunk dominates one section, its branches spreading wide. Below it, artfully placed large, smooth rocks create a natural focal point. Further into the garden, a perfectly sculpted bonsai tree, with its distinctive horizontal branches, adds to the tranquil atmosphere. The ground is a mosaic of soft green moss, precisely raked white gravel forming intricate patterns, and strategically placed flat stepping stones. Low-lying, rounded bushes add texture and depth to the serene environment.\n\nAnother view of the garden reveals a captivating series of meandering pathways that curve gracefully through rolling green lawns. These paths, made of light-colored paving stones, create a sense of discovery and flow. The lawns are bordered by exquisitely trimmed hedges and a variety of trees with elegant, arching branches, their leaves a fresh, vibrant green. Large, smooth boulders are nestled among the foliage, adding to the natural, harmonious feel. The overall impression is one of peaceful serenity, a perfectly sculpted natural oasis designed for quiet contemplation.' },
+  { id: 'modern-mediterranean', label: 'MODERN MEDITERRANEAN', subtitle: 'Luxury White Stucco', thSubtitle: 'บ้านหรูสไตล์เมดิเตอร์เรเนียน', prompt: 'Elegant Classic European Mansion Architecture, grand two-story, perfect symmetry. Exterior in pale polished stone and pristine white stucco. Dark S-tile roof. Features multiple large arched windows with bold black metal frames, intricate black wrought-iron Juliet balconies, and a deeply recessed arched main entrance with ornate black wrought-iron glass doors. Fronted by an immaculately manicured formal French garden: straight driveway of pale stone pavers, bordered by low, tightly clipped boxwood hedges, flanked by tall, cone-shaped topiaries. Elegant urns and planters near the entrance. Bright natural daylight, soft defined shadows, high contrast. Straight-on, perfectly symmetrical eye-level full-shot. Ultra-high resolution, photorealistic architectural render.' },
   { id: 'bangkok-street', label: 'BANGKOK STREET', subtitle: 'Night Life', thSubtitle: 'สตรีทไลฟ์กรุงเทพฯ', prompt: 'Bangkok street photography, vibrant night life, neon signs, tuk-tuks, street food stalls, power lines silhouetted against the sky, cinematic lighting, cyberpunk atmosphere.' },
-  { id: 'modern-min', label: 'MODERN MINIMALIST', subtitle: 'Clean & Simple', thSubtitle: 'โมเดิร์น มินิมอล', prompt: 'Ultra-minimalist Modern House Architecture, pristine white, single-story gabled house, smooth stark white concrete exterior, steep symmetrical gable roof. Features large black-framed glass windows and sliding doors, including a dramatic triangular floor-to-ceiling window on the gable end. Subtle interior elements visible: wooden shelf, minimalist pendant lamp, light-toned furniture. Subtle wisp of smoke from a vent. Set in a dry, arid landscape with sparse golden-brown grasses, low shrubs, and large light-colored boulders. White concrete staircase and gravel pathway in the foreground. Hints of distant soft-hued mountains. Bright, clear natural daylight, high sun, soft subtle shadows. Straight-on, eye-level full-shot. High-resolution, photorealistic, serene, spacious, quiet isolation' },
-  { id: 'pool-villa', label: 'POOL VILLA', subtitle: 'Luxury Vacation', thSubtitle: 'พูลวิลล่าหรู', prompt: 'Luxurious Modern Italian Villa, grand multi-story structure, pristine white stucco walls, terracotta S-tile roof. Dominant feature is the series of large, symmetrical arched windows and French doors with thin black metal frames. Set on a steep, lush wooded hillside with dense dark green trees in the background. Features a clear azure blue rectangular swimming pool on a large light-colored stone patio terrace, supported by a rugged natural stone retaining wall. Several tall, slender palm trees and potted plants decorate the patio. Bright, clear sunlit day, vibrant and high-contrast lighting. High-angle or elevated view, ultra-high resolution, photorealistic, exclusive summer luxury.' },
-  { id: 'modern-twilight', label: 'MODERN TWILIGHT', subtitle: 'Dusk Setting', thSubtitle: 'โมเดิร์นยามค่ำ', prompt: 'Modern architectural house at twilight, warm interior lighting glowing through windows, blue hour sky, exterior garden lighting, cozy atmosphere, photorealistic.' },
-  { id: 'stone-cottage', label: 'STONE COTTAGE', subtitle: 'Modern Rock Pool', thSubtitle: 'โมเดิร์นคอทเทจหิน', prompt: 'Luxurious Modern Stone Cottage with a Naturalistic Rock Pool. Two-story house, clean horizontal lines, flat roof, natural stacked stone cladding on the lower level, large dark-framed windows, warm modern wood entrance door. House is connected to a secluded, organically shaped rock pool with crystal-clear turquoise and emerald water, edged by massive smooth grey boulders and surrounded by ancient olive trees and low, dense Mediterranean shrubs. Manicured lawn and flowerbeds near the house entrance. Bright, warm natural sunlight, dramatic highlights on the pool and wood. Wide, slightly elevated perspective. Ultra-high resolution, photorealistic architectural render, harmonious integration with nature.' },
-  { id: 'luxury-exterior', label: 'LUXURY EXTERIOR', subtitle: 'Modern Mediterranean', thSubtitle: 'โมเดิร์นเมดิเตอร์เรเนียน', prompt: 'Luxurious Modern Mediterranean Architecture, grand two-story house, pristine white stucco exterior, dark grey S-tile roof. Features bold black-framed windows: one large two-story arched window, rectangular windows with black Juliet balconies. Main entrance in a deeply recessed archway with a tall black-framed arched glass door. Symmetrical facade. Meticulously manicured formal landscape, vibrant green lawn, wide smooth white concrete driveway. Symmetrical tall, slender Italian Cypress trees, low, tightly clipped boxwood hedges, large black planters. Soft, overcast or diffused natural lighting, bright and even. Straight-on, eye-level vertical full-shot. High-resolution, photorealistic architectural photography, formal, timeless luxury.' },
+  { id: 'modern-min', label: 'MODERN MINIMALIST', subtitle: 'Clean & Simple', thSubtitle: 'โมเดิร์น มินิมอล', prompt: 'Ultra-minimalist Modern House Architecture, pristine white, single-story gabled house, smooth stark white concrete exterior, steep symmetrical gable roof.' },
+  { id: 'pool-villa', label: 'POOL VILLA', subtitle: 'Luxury Vacation', thSubtitle: 'พูลวิลล่าหรู', prompt: 'A luxurious modern private pool villa with wide open architecture, large floor-to-ceiling glass walls, a sparkling infinity pool with crystal-clear water reflecting the sunlight. Bright and cheerful atmosphere with a clear blue sky, warm natural light, soft shadows, and lush tropical plants surrounding the villa. High-end outdoor furniture such as premium sunbeds and modern wooden tables. Ultra-detailed 8K clarity, cinematic lighting, crisp reflections on the water surface, relaxing yet elegant resort aesthetic, wide-angle lens composition.' },
 ];
 
 const INTERIOR_PRESETS = [
-  { id: 'modern-luxury-int', label: 'MODERN LUXURY', subtitle: 'High-end Living', thSubtitle: 'ห้องนั่งเล่นหรูหรา', prompt: 'Modern Luxury Living Room, spacious, double-height ceiling, marble flooring, large crystal chandelier, beige and gold color palette, plush velvet sofa, floor-to-ceiling windows with sheer curtains, warm ambient lighting, 8k photorealistic.' },
-  { id: 'japandi-int', label: 'JAPANDI STYLE', subtitle: 'Zen & Scandi', thSubtitle: 'เจแปนดิ (ญี่ปุ่น+สแกน)', prompt: 'Japandi Interior Design, bedroom, minimalist, light oak wood furniture, low platform bed, linen bedding, soft neutral tones (white, cream, beige), bonsai plant, rice paper lamp, serene atmosphere, natural light.' },
-  { id: 'industrial-loft', label: 'INDUSTRIAL LOFT', subtitle: 'Raw & Edgy', thSubtitle: 'อินดัสเทรียล ลอฟท์', prompt: 'Industrial Loft Kitchen, exposed brick walls, concrete ceiling with exposed pipes, black metal pendant lights, reclaimed wood island, stainless steel appliances, large factory-style windows, dramatic lighting.' },
-  { id: 'tropical-resort-int', label: 'TROPICAL RESORT', subtitle: 'Relaxing Vibes', thSubtitle: 'รีสอร์ททรอปิคอล', prompt: 'Tropical Resort Bedroom, open-air concept, teak wood flooring, rattan furniture, white canopy bed, indoor plants, view of lush green garden, ceiling fan, warm sunlight, relaxing and airy.' },
-  { id: 'minimalist-office', label: 'MINIMALIST OFFICE', subtitle: 'Productive Space', thSubtitle: 'ออฟฟิศมินิมอล', prompt: 'Minimalist Home Office, clean white desk, ergonomic chair, floating shelves with few books, large window with city view, soft daylight, clutter-free, inspiring workspace.' }
+  { id: 'modern-luxury-int', label: 'MODERN LUXURY', subtitle: 'High-end Living', thSubtitle: 'ห้องนั่งเล่นหรูหรา', prompt: 'Modern Luxury Living Room, spacious, double-height ceiling, marble flooring, large crystal chandelier, beige and gold color palette, plush velvet sofa, floor-to-ceiling windows.' },
+  { id: 'japandi-int', label: 'JAPANDI STYLE', subtitle: 'Zen & Scandi', thSubtitle: 'เจแปนดิ (ญี่ปุ่น+สแกน)', prompt: 'Japandi Interior Design, bedroom, minimalist, light oak wood furniture, low platform bed, linen bedding, soft neutral tones (white, cream, beige), bonsai plant, rice paper lamp.' },
+  { id: 'industrial-loft', label: 'INDUSTRIAL LOFT', subtitle: 'Raw & Edgy', thSubtitle: 'อินดัสเทรียล ลอฟท์', prompt: 'Industrial Loft Kitchen, exposed brick walls, concrete ceiling with exposed pipes, black metal pendant lights, reclaimed wood island, stainless steel appliances.' },
 ];
 
 const PLAN_PRESETS = [
   { id: '2d-to-3d-floorplan', label: '2D TO 3D FLOORPLAN', subtitle: 'Basic 3D', thSubtitle: 'แปลน 2D เป็น 3D', prompt: 'Convert this 2D architectural floor plan into a clear 3D isometric floor plan render. White walls, realistic wooden flooring, basic furniture placement, soft top-down lighting, clean look.' },
   { id: 'realistic-plan', label: 'REALISTIC 3D PLAN', subtitle: 'Textured & Lit', thSubtitle: 'แปลน 3D สมจริง', prompt: 'High-quality 3D isometric floor plan rendering from 2D plan. Realistic textures, detailed furniture, shadows and lighting, ambient occlusion, modern interior design style.' }
-];
-
-// Initial Mock Users
-const INITIAL_USERS: User[] = [
-  { id: 'admin-001', name: 'Suwannarin Admin', email: 'dwgsuwannarin@gmail.com', plan: 'PRO', role: 'ADMIN', status: 'ACTIVE', avatarUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=admin' },
-  { id: 'user-002', name: 'Demo User', email: 'user@example.com', plan: 'FREE', role: 'USER', status: 'ACTIVE', avatarUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=user' },
 ];
 
 const App: React.FC = () => {
@@ -118,317 +122,99 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<'EXTERIOR' | 'INTERIOR' | 'PLAN'>('EXTERIOR');
   const [prompt, setPrompt] = useState('');
+  const [isEnhancing, setIsEnhancing] = useState(false); // State for prompt enhancement
   const [additionalPrompt, setAdditionalPrompt] = useState('');
-  const [model, setModel] = useState('gemini-2.5-flash-image');
+  // Custom Rules / Memory State - Initialize from LocalStorage
+  const [customRules, setCustomRules] = useState(() => {
+    return localStorage.getItem('render-ai-custom-rules') || '';
+  });
+  
+  // Set DEFAULT MODEL to PRO for better quality
+  const [model, setModel] = useState('gemini-3-pro-image-preview'); 
   const [language, setLanguage] = useState<'EN' | 'TH'>('TH');
   const [activePresets, setActivePresets] = useState(EXTERIOR_PRESETS);
   
-  // Auth State
-  const [user, setUser] = useState<User | null>(null);
-  const [users, setUsers] = useState<User[]>(INITIAL_USERS);
-  const [showAdminDashboard, setShowAdminDashboard] = useState(false);
-  const [authError, setAuthError] = useState<string | null>(null);
+  // Brush/Mask Tool State
+  const [isMaskMode, setIsMaskMode] = useState(false);
+  const [brushSize, setBrushSize] = useState(20);
+  const [brushColor, setBrushColor] = useState('#ef4444'); // Default Red
+  const [maskData, setMaskData] = useState<string | null>(null);
+  const [triggerUndo, setTriggerUndo] = useState(0);
 
-  // Sync users from localStorage on load
-  useEffect(() => {
-    const storedUsers = localStorage.getItem('render_ai_users');
-    if (storedUsers) {
-      try {
-        const parsed = JSON.parse(storedUsers);
-        // Ensure admin always exists, BUT do not overwrite if already exists to preserve data.
-        // Only inject if the admin account is missing completely.
-        const adminIndex = parsed.findIndex((u: User) => u.email === 'dwgsuwannarin@gmail.com');
-        if (adminIndex === -1) {
-            parsed.push(INITIAL_USERS[0]);
-            localStorage.setItem('render_ai_users', JSON.stringify(parsed));
-        }
-        setUsers(parsed);
-      } catch (e) {
-        console.error("Failed to parse users", e);
-        setUsers(INITIAL_USERS);
-      }
-    } else {
-      localStorage.setItem('render_ai_users', JSON.stringify(INITIAL_USERS));
-    }
-
-    const storedUser = localStorage.getItem('render_ai_current_user');
-    if (storedUser) {
-      try {
-        setUser(JSON.parse(storedUser));
-      } catch (e) { console.error(e) }
-    }
-
-    // Check for Magic Link Approval
-    const urlParams = new URLSearchParams(window.location.search);
-    const approveUserId = urlParams.get('approve_user');
-    
-    // Only process if we have a user logged in (as admin)
-    if (approveUserId) {
-      // We need to wait for login if not logged in, but if we are:
-      const currentUser = storedUser ? JSON.parse(storedUser) : null;
-      if (currentUser && currentUser.role === 'ADMIN') {
-        handleMagicApproval(approveUserId);
-      }
-    }
-
-  }, []);
-
-  // Update localStorage when users change
-  useEffect(() => {
-    // Only update if users list is valid and not empty (prevent accidental wipe)
-    if (users && users.length > 0) {
-      localStorage.setItem('render_ai_users', JSON.stringify(users));
-    }
-  }, [users]);
-
-  // Update localStorage when current user changes
-  useEffect(() => {
-    if (user) {
-      localStorage.setItem('render_ai_current_user', JSON.stringify(user));
-    } else {
-      localStorage.removeItem('render_ai_current_user');
-    }
-  }, [user]);
-
-  // Auto-Sync Hook: Listen for storage events (Cross-tab)
-  useEffect(() => {
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'render_ai_users' && e.newValue) {
-        setUsers(JSON.parse(e.newValue));
-      }
-    };
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
-  }, []);
-
-  // ADMIN POLLING: Auto-fetch new users if logged in as Admin
-  useEffect(() => {
-    let interval: ReturnType<typeof setInterval>;
-    if (user && user.role === 'ADMIN') {
-      interval = setInterval(() => {
-        const storedUsers = localStorage.getItem('render_ai_users');
-        if (storedUsers) {
-          const parsed = JSON.parse(storedUsers);
-          if (JSON.stringify(parsed) !== JSON.stringify(users)) {
-             setUsers(parsed);
-          }
-        }
-      }, 3000); // Check every 3 seconds
-    }
-    return () => clearInterval(interval);
-  }, [user, users]);
-
-  // Real-time Approval Check for Users
-  useEffect(() => {
-    if (user && user.status === 'PENDING') {
-      const interval = setInterval(() => {
-        const storedUsers = localStorage.getItem('render_ai_users');
-        if (storedUsers) {
-          const allUsers = JSON.parse(storedUsers);
-          const myUpdatedUser = allUsers.find((u: User) => u.id === user.id);
-          
-          if (myUpdatedUser && myUpdatedUser.status === 'ACTIVE') {
-            setUser(myUpdatedUser);
-            alert("Your account has been approved! Redirecting to workspace...");
-            clearInterval(interval);
-          }
-        }
-      }, 2000); // Check every 2 seconds
-      return () => clearInterval(interval);
-    }
-  }, [user]);
-
-
-  const handleMagicApproval = (userId: string) => {
-    // Read fresh data
-    const storedUsers = localStorage.getItem('render_ai_users');
-    const currentList = storedUsers ? JSON.parse(storedUsers) : users;
-    
-    const updated = currentList.map((u: User) => u.id === userId ? { ...u, status: 'ACTIVE' as const } : u);
-    
-    localStorage.setItem('render_ai_users', JSON.stringify(updated));
-    setUsers(updated);
-    
-    alert(`User Approved Successfully via Magic Link!`);
-    // Clean URL
-    window.history.replaceState({}, document.title, window.location.pathname);
-  };
-
-  const handleSyncDatabase = (silent = false) => {
-    const storedUsers = localStorage.getItem('render_ai_users');
-    if (storedUsers) {
-      setUsers(JSON.parse(storedUsers));
-      if (!silent) alert("Database synced successfully!");
-    }
-  };
-
-  const handleRestoreDatabase = (restoredUsers: User[]) => {
-    setUsers(restoredUsers);
-    localStorage.setItem('render_ai_users', JSON.stringify(restoredUsers));
-    alert("Database successfully restored from Backup (Beta Version).");
-  };
-
-  // Update presets when tab changes
   useEffect(() => {
     if (tab === 'EXTERIOR') setActivePresets(EXTERIOR_PRESETS);
     else if (tab === 'INTERIOR') setActivePresets(INTERIOR_PRESETS);
     else if (tab === 'PLAN') setActivePresets(PLAN_PRESETS);
   }, [tab]);
 
-  // Text helpers
+  // Save custom rules whenever they change
+  useEffect(() => {
+    localStorage.setItem('render-ai-custom-rules', customRules);
+  }, [customRules]);
+
   const t = TRANSLATIONS[language];
 
-  // --- AUTH HANDLERS ---
-  const handleLogin = (loginUser: User) => {
-    // Force refresh DB first
-    const storedUsers = localStorage.getItem('render_ai_users');
-    let currentUsers = users;
-    if (storedUsers) {
-      currentUsers = JSON.parse(storedUsers);
-      setUsers(currentUsers);
-    }
-
-    const foundUser = currentUsers.find(
-      u => u.email.toLowerCase() === loginUser.email.toLowerCase()
-    );
-
-    if (foundUser) {
-      if (foundUser.status === 'BANNED') {
-        setAuthError("This account has been suspended.");
-        return;
-      }
-      
-      setUser(foundUser);
-      setAuthError(null);
-      
-      // Check for magic link pending
-      const urlParams = new URLSearchParams(window.location.search);
-      const approveUserId = urlParams.get('approve_user');
-      if (approveUserId && foundUser.role === 'ADMIN') {
-        setTimeout(() => handleMagicApproval(approveUserId), 500);
-      }
-    } else {
-      setAuthError("User not found. Please check your email or sign up.");
-    }
-  };
-
-  const handleRegister = (newUser: User) => {
-    // CRITICAL: Read from storage to ensure we have the absolute latest list
-    const storedUsers = localStorage.getItem('render_ai_users');
-    const currentDB = storedUsers ? JSON.parse(storedUsers) : INITIAL_USERS;
-
-    // Check if email exists
-    const exists = currentDB.some((u: User) => u.email.toLowerCase() === newUser.email.toLowerCase());
-    if (exists) {
-      setAuthError("Email already registered. Please sign in.");
-      return;
-    }
-
-    const userWithStatus: User = { 
-      ...newUser, 
-      status: 'PENDING', 
-      role: 'USER', 
-      plan: 'FREE' 
-    };
-    
-    const updatedUsers = [...currentDB, userWithStatus];
-    
-    // Write back to storage immediately
-    localStorage.setItem('render_ai_users', JSON.stringify(updatedUsers));
-    setUsers(updatedUsers);
-    setUser(userWithStatus); // Logs them in but shows Pending screen
-    setAuthError(null);
-    alert("Registration successful! Please wait for admin approval.");
-  };
-
-  const handleSubscribe = () => {
-    if (user) {
-      // Update DB directly
-      const storedUsers = localStorage.getItem('render_ai_users');
-      const currentDB = storedUsers ? JSON.parse(storedUsers) : users;
-      
-      const updatedUser = { ...user, plan: 'PRO' as const };
-      const updatedList = currentDB.map((u: User) => u.id === user.id ? updatedUser : u);
-      
-      localStorage.setItem('render_ai_users', JSON.stringify(updatedList));
-      setUsers(updatedList);
-      setUser(updatedUser);
-    }
-  };
-
-  const handleContinueFree = () => {
-    // Just ensure they are logged in, logic is handled in render
-    if (user) {
-        // Continue logic handled by state
-    }
-  };
-
-  const handleLogout = () => {
-    // 1. Explicitly clear local storage to prevent instant re-login
-    localStorage.removeItem('render_ai_current_user');
-    
-    // 2. Reset App State
-    setUser(null);
-    setResult(null);
-    setStatus(AppStatus.IDLE);
-    setPrompt('');
-    setAdditionalPrompt('');
-    setShowAdminDashboard(false);
-    
-    // 3. Clean any URL parameters (Magic links)
-    window.history.replaceState({}, document.title, window.location.pathname);
-
-    // 4. Force Reload to ensure clean slate (Fixes many stuck state issues)
-    window.location.reload();
-  };
-
-  // --- ADMIN HANDLERS ---
-  const handleApproveUser = (userId: string) => {
-    // Read-Modify-Write for safety
-    const storedUsers = localStorage.getItem('render_ai_users');
-    const currentDB = storedUsers ? JSON.parse(storedUsers) : users;
-    
-    const updatedList = currentDB.map((u: User) => u.id === userId ? { ...u, status: 'ACTIVE' as const } : u);
-    
-    localStorage.setItem('render_ai_users', JSON.stringify(updatedList));
-    setUsers(updatedList);
-  };
-
-  const handleDeleteUser = (userId: string) => {
-     // Read-Modify-Write for safety
-    const storedUsers = localStorage.getItem('render_ai_users');
-    const currentDB = storedUsers ? JSON.parse(storedUsers) : users;
-    
-    const updatedList = currentDB.filter((u: User) => u.id !== userId);
-    
-    localStorage.setItem('render_ai_users', JSON.stringify(updatedList));
-    setUsers(updatedList);
-  };
-
-
   // --- APP HANDLERS ---
+  
+  // New Function to Enhance Prompt
+  const handleEnhancePrompt = async () => {
+    if (!prompt.trim()) {
+        alert(t.enterPrompt);
+        return;
+    }
+    
+    // Check API Key
+    if (!process.env.API_KEY && !(window as any).aistudio) {
+        alert(t.enterKey);
+        return;
+    }
+
+    setIsEnhancing(true);
+    try {
+        const enhanced = await enhancePromptService(prompt);
+        setPrompt(enhanced);
+    } catch (e) {
+        console.error("Enhance failed", e);
+    } finally {
+        setIsEnhancing(false);
+    }
+  };
+
   const handleGenerate = async () => {
+    // 1. Check & Prompt for API Key via aistudio interface if available
+    if ((window as any).aistudio) {
+        const hasKey = await (window as any).aistudio.hasSelectedApiKey();
+        if (!hasKey) {
+            try {
+               await (window as any).aistudio.openSelectKey();
+            } catch (err) {
+               console.error("Failed to open key selector", err);
+            }
+        }
+    }
+
+    // 2. Fallback check for environment variable
     if (!process.env.API_KEY) {
       alert(t.enterKey);
+      // Try to open selector again if possible
+      if ((window as any).aistudio) {
+         try { await (window as any).aistudio.openSelectKey(); } catch {}
+      }
       return;
     }
     
-    // LOGIC UPDATE: Determine source image
-    // If we have a previous result AND the user typed in "Additional Command", 
-    // we use the previous result as the source image for refinement.
-    // Otherwise, we use the original selected image.
+    // Determine source image (Result or Original)
     let sourceImageToUse = selectedImage;
     let isRefinement = false;
 
-    if (result?.imageUrl && additionalPrompt.trim()) {
+    if (result?.imageUrl && (additionalPrompt.trim() || maskData)) {
        sourceImageToUse = {
          base64: result.imageUrl,
-         mimeType: 'image/png' // Generated images are typically PNG
+         mimeType: 'image/png' 
        };
        isRefinement = true;
     }
 
-    // Validate inputs
     if (!sourceImageToUse) {
       alert("Please upload an image first.");
       return;
@@ -436,8 +222,14 @@ const App: React.FC = () => {
     
     // Construct final prompt
     let finalPrompt = prompt;
+    
+    // Append Custom Rules (The AI's "Memory")
+    if (customRules.trim()) {
+        finalPrompt += `\n\n[USER PREFERENCES/STYLE GUIDE]: ${customRules.trim()}`;
+    }
+
     if (additionalPrompt.trim()) {
-      finalPrompt += `\n\n${isRefinement ? 'Refinement Instructions (Apply to provided previous generation):' : 'Additional Instructions:'} ${additionalPrompt}`;
+      finalPrompt += `\n\n${isRefinement ? 'Refinement Instructions:' : 'Additional Instructions:'} ${additionalPrompt}`;
     }
     
     if (!finalPrompt.trim()) {
@@ -454,74 +246,54 @@ const App: React.FC = () => {
         sourceImageToUse.mimeType,
         finalPrompt,
         model,
-        styleImage 
+        styleImage, // Pass Style Image here
+        maskData // Pass the mask if it exists
       );
 
       setResult(genResult);
       setStatus(AppStatus.SUCCESS);
+      // Turn off mask mode after successful generation to show result clearly
+      setIsMaskMode(false);
+      setMaskData(null);
       
     } catch (e: any) {
       console.error(e);
       setError(e.message || t.unexpectedError);
       setStatus(AppStatus.ERROR);
+
+      // Handle 403 / Permission errors by offering to change the key
+      if (e.message && (e.message.includes('403') || e.message.includes('Permission'))) {
+         if ((window as any).aistudio) {
+            const shouldChange = confirm("Permission Denied: Your API Key may not support this model or is invalid. Would you like to select a new API Key?");
+            if (shouldChange) {
+                try { await (window as any).aistudio.openSelectKey(); } catch {}
+            }
+         }
+      }
     }
   };
 
   const handleNewProject = () => {
-    // Reset inputs but keep images
     setPrompt('');
     setAdditionalPrompt('');
-    
-    // Clear Result
     setResult(null);
     setStatus(AppStatus.IDLE);
     setError(null);
-    
-    // selectedImage and styleImage remain untouched
+    setIsMaskMode(false);
+    setMaskData(null);
+    setStyleImage(null);
   };
 
   const handleResetResult = () => {
      setResult(null);
      setStatus(AppStatus.IDLE);
      setError(null);
+     setIsMaskMode(false);
+     setMaskData(null);
   }
-
 
   // --- RENDER LOGIC ---
 
-  // 1. Auth Check
-  if (!user || user.status === 'PENDING') {
-    return (
-      <AuthScreens 
-        onLogin={handleLogin} 
-        onRegister={handleRegister}
-        onSubscribe={handleSubscribe} 
-        onContinueFree={handleContinueFree}
-        onLogout={handleLogout}
-        user={user}
-        authError={authError}
-        onClearError={() => setAuthError(null)}
-      />
-    );
-  }
-
-  // 2. Admin Dashboard Check
-  if (user.role === 'ADMIN' && showAdminDashboard) {
-    return (
-      <AdminDashboard 
-        user={user} 
-        allUsers={users} 
-        onApprove={handleApproveUser} 
-        onDelete={handleDeleteUser}
-        onLogout={handleLogout}
-        onBack={() => setShowAdminDashboard(false)}
-        onSync={handleSyncDatabase}
-        onRestore={handleRestoreDatabase}
-      />
-    );
-  }
-
-  // 3. Main App
   return (
     <div className="flex h-screen bg-[#09090b] text-zinc-300 font-roboto overflow-hidden">
       
@@ -538,92 +310,78 @@ const App: React.FC = () => {
               <h1 className="text-2xl font-bold text-white tracking-tight leading-none flex items-baseline gap-1">
                 RENDER AI <span className="text-xs font-normal text-zinc-500">(beta)</span>
               </h1>
-              <div className="text-[10px] text-orange-500 font-medium tracking-widest mt-0.5">by suwannarin</div>
             </div>
           </div>
         </div>
 
-        {/* User Profile & Admin Access */}
-        <div className="px-5 pt-4 pb-2">
-           <div className="flex items-center justify-between bg-zinc-900/50 p-3 rounded-xl border border-zinc-800">
-              <div className="flex items-center gap-3">
-                 <img src={user.avatarUrl} alt="Avatar" className="w-8 h-8 rounded-full bg-zinc-800" />
-                 <div className="flex flex-col">
-                    <span className="text-xs font-bold text-white truncate max-w-[100px]">{user.name}</span>
-                    <span className="text-[10px] text-zinc-500 flex items-center gap-1">
-                      {user.plan === 'PRO' && <Crown size={10} className="text-orange-500"/>} 
-                      {user.plan} PLAN
-                    </span>
-                 </div>
-              </div>
-              <div className="flex items-center gap-1">
-                 {user.role === 'ADMIN' && (
-                   <button 
-                    onClick={() => setShowAdminDashboard(true)}
-                    className="p-1.5 text-zinc-400 hover:text-indigo-400 hover:bg-indigo-900/20 rounded-lg transition-colors relative"
-                    title={t.adminDashboard}
-                   >
-                     <Shield size={16} />
-                     {users.some(u => u.status === 'PENDING') && (
-                       <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full border border-[#18181b]"></span>
-                     )}
-                   </button>
-                 )}
-                 <button 
-                  onClick={handleLogout}
-                  className="p-1.5 text-zinc-400 hover:text-white hover:bg-zinc-700/50 rounded-lg transition-colors"
-                  title={t.logout}
-                 >
-                   <LogOut size={16} />
-                 </button>
-              </div>
-           </div>
-        </div>
-
         {/* Scrollable Content */}
-        <div className="p-5 space-y-8 pb-20">
+        <div className="p-5 space-y-6 pb-20">
           
           {/* TABS */}
           <div className="flex p-1 bg-zinc-900 rounded-lg border border-zinc-800">
-            <button 
-              onClick={() => setTab('EXTERIOR')}
-              className={`flex-1 py-2 text-[10px] font-bold rounded-md transition-all ${tab === 'EXTERIOR' ? 'bg-zinc-700 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}
-            >
-              {t.exterior}
-            </button>
-            <button 
-              onClick={() => setTab('INTERIOR')}
-              className={`flex-1 py-2 text-[10px] font-bold rounded-md transition-all ${tab === 'INTERIOR' ? 'bg-zinc-700 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}
-            >
-              {t.interior}
-            </button>
-            <button 
-              onClick={() => setTab('PLAN')}
-              className={`flex-1 py-2 text-[10px] font-bold rounded-md transition-all ${tab === 'PLAN' ? 'bg-zinc-700 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}
-            >
-              {t.plan}
-            </button>
+            {['EXTERIOR', 'INTERIOR', 'PLAN'].map((tabName) => (
+              <button 
+                key={tabName}
+                onClick={() => setTab(tabName as any)}
+                className={`flex-1 py-2 text-[10px] font-bold rounded-md transition-all ${tab === tabName ? 'bg-zinc-700 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}
+              >
+                {t[tabName.toLowerCase() as keyof typeof t] || tabName}
+              </button>
+            ))}
           </div>
 
-          {/* MODE & MODEL */}
-          <div className="space-y-4">
+          {/* AI SETTINGS GROUP (Combined) */}
+          <div className="space-y-2">
              <div className="flex items-center justify-between">
                 <label className="text-xs font-bold text-zinc-500 flex items-center gap-2">
                    <Settings2 size={12}/> {t.aiSettings}
                 </label>
              </div>
              
-             {/* Model Select */}
-             <div className="relative">
-                <select 
-                  value={model}
-                  onChange={(e) => setModel(e.target.value)}
-                  className="w-full bg-zinc-900 border border-zinc-700 text-white text-xs rounded-lg px-3 py-2.5 appearance-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 outline-none"
-                >
-                  <option value="gemini-2.5-flash-image">Gemini 2.5 Flash Image (Fast)</option>
-                  <option value="gemini-3-pro-image-preview">Gemini 3.0 Pro Image (High Quality)</option>
-                </select>
-                <Cpu className="absolute right-3 top-2.5 w-4 h-4 text-zinc-500 pointer-events-none" />
+             <div className="flex flex-col rounded-lg border border-zinc-700 bg-zinc-900 overflow-hidden">
+                {/* Top: Model */}
+                <div className="relative border-b border-zinc-700/50">
+                    <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none text-zinc-500">
+                        <Cpu size={14} />
+                    </div>
+                    <select 
+                      value={model}
+                      onChange={(e) => setModel(e.target.value)}
+                      className="w-full bg-transparent text-white text-xs px-10 py-3 appearance-none focus:bg-zinc-800 outline-none cursor-pointer"
+                    >
+                      <option value="gemini-3-pro-image-preview">Gemini 3.0 Pro (High Quality)</option>
+                      <option value="gemini-2.5-flash-image">Gemini 2.5 Flash (Fast)</option>
+                    </select>
+                </div>
+
+                {/* Bottom: API Key */}
+                <div className="relative hover:bg-zinc-800 transition-colors">
+                   <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none text-zinc-500">
+                        <Key size={14} />
+                    </div>
+                   <button
+                     onClick={async () => {
+                       if ((window as any).aistudio) {
+                         try { await (window as any).aistudio.openSelectKey(); } catch(e) { console.error(e); }
+                       } else {
+                         window.open("https://aistudio.google.com/app/apikey", "_blank");
+                       }
+                     }}
+                     className="w-full flex items-center justify-between text-xs px-10 py-3 cursor-pointer"
+                   >
+                      <span className="text-zinc-300">
+                        {t.apiKeyStatus}
+                      </span>
+                      
+                      <span className="flex items-center gap-2">
+                         <div className="flex items-center gap-1.5 text-zinc-400">
+                            <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)] animate-pulse"></div>
+                            <span className="text-[10px]">{t.connected}</span>
+                         </div>
+                         <Link size={10} className="text-zinc-600" />
+                      </span>
+                   </button>
+                </div>
              </div>
           </div>
 
@@ -635,18 +393,26 @@ const App: React.FC = () => {
             <ImageUploader onImageSelect={setSelectedImage} selectedImage={selectedImage} />
           </div>
 
-           {/* TEXT PROMPT - MOVED HERE */}
+           {/* TEXT PROMPT & ENHANCER */}
            <div className="space-y-2">
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-zinc-500 flex items-center gap-2">
                 <PenTool size={12} /> {t.promptLabel}
               </label>
+              <button 
+                onClick={handleEnhancePrompt}
+                disabled={isEnhancing || !prompt.trim()}
+                className="flex items-center gap-1 text-[10px] bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 px-2 py-1 rounded transition-colors disabled:opacity-50"
+              >
+                {isEnhancing ? <Loader2 size={10} className="animate-spin" /> : <Wand2 size={10} />}
+                {isEnhancing ? t.enhancing : t.enhanceButton}
+              </button>
             </div>
             <textarea
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               placeholder={t.promptPlaceholder}
-              className="w-full h-24 bg-zinc-900 border border-zinc-700 rounded-lg p-3 text-sm text-zinc-200 placeholder-zinc-600 focus:ring-1 focus:ring-orange-500 focus:border-orange-500 outline-none resize-none transition-all"
+              className="w-full h-20 bg-zinc-900 border border-zinc-700 rounded-lg p-3 text-sm text-zinc-200 placeholder-zinc-600 focus:ring-1 focus:ring-orange-500 focus:border-orange-500 outline-none resize-none transition-all"
             />
           </div>
 
@@ -665,13 +431,69 @@ const App: React.FC = () => {
             />
           </div>
 
-          {/* STYLE REFERENCE UPLOAD */}
+          {/* STYLE REFERENCE IMAGE */}
           <div className="space-y-2">
-            <label className="text-xs font-bold text-zinc-500 flex items-center gap-2">
-              <Layers size={12} /> {t.styleReference} <span className="text-zinc-600 text-[10px] bg-zinc-800 px-1 rounded ml-auto">{t.optional}</span>
-            </label>
-            <ImageUploader onImageSelect={setStyleImage} selectedImage={styleImage} compact={true} />
+             <label className="text-xs font-bold text-zinc-500 flex items-center gap-2">
+               <ImageIcon size={12} /> {t.styleReference} <span className="text-zinc-600 text-[10px] ml-auto">{t.optional}</span>
+             </label>
+             <ImageUploader onImageSelect={setStyleImage} selectedImage={styleImage} compact />
           </div>
+
+          {/* BRUSH TOOL - BELOW ADDITIONAL COMMAND */}
+          <div className="bg-zinc-900/50 border border-zinc-800 rounded-lg p-3 space-y-3">
+             <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-zinc-400 flex items-center gap-2">
+                   <Brush size={12} /> {t.brushTool}
+                </label>
+                <button 
+                  onClick={() => setIsMaskMode(!isMaskMode)}
+                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${isMaskMode ? 'bg-orange-500' : 'bg-zinc-700'}`}
+                >
+                   <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${isMaskMode ? 'translate-x-4.5' : 'translate-x-1'}`} />
+                </button>
+             </div>
+
+             {isMaskMode && (
+               <div className="animate-in fade-in slide-in-from-top-2 space-y-3 pt-1">
+                  {/* Size Slider */}
+                  <div className="space-y-1">
+                     <div className="flex justify-between text-[10px] text-zinc-500">
+                        <span>{t.brushSize}</span>
+                        <span>{brushSize}px</span>
+                     </div>
+                     <input 
+                       type="range" 
+                       min="5" max="100" 
+                       value={brushSize}
+                       onChange={(e) => setBrushSize(parseInt(e.target.value))}
+                       className="w-full h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-orange-500"
+                     />
+                  </div>
+
+                  {/* Colors & Undo */}
+                  <div className="flex items-center justify-between">
+                     <div className="flex items-center gap-2">
+                        {['#ef4444', '#22c55e', '#3b82f6', '#ffffff'].map(color => (
+                          <button
+                            key={color}
+                            onClick={() => setBrushColor(color)}
+                            className={`w-6 h-6 rounded-full border-2 transition-all ${brushColor === color ? 'border-white scale-110' : 'border-transparent hover:scale-105'}`}
+                            style={{ backgroundColor: color }}
+                          />
+                        ))}
+                     </div>
+                     <button 
+                       onClick={() => setTriggerUndo(prev => prev + 1)}
+                       className="p-1.5 hover:bg-white/10 rounded text-zinc-400 hover:text-white transition-colors"
+                       title={t.undo}
+                     >
+                        <Undo2 size={16} />
+                     </button>
+                  </div>
+               </div>
+             )}
+          </div>
+
 
           {/* QUICK PROMPTS */}
           <div className="space-y-2">
@@ -685,18 +507,36 @@ const App: React.FC = () => {
                   <button
                     key={preset.id}
                     onClick={() => setPrompt(preset.prompt)}
-                    className="group relative w-full h-9 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-orange-500/50 rounded-lg overflow-hidden transition-all duration-300 flex items-center text-left px-3"
+                    className={`group relative w-full h-9 rounded-lg overflow-hidden transition-all duration-300 flex items-center text-left px-3 border ${
+                      preset.id === 'luxury-nordic-masterpiece' 
+                        ? 'bg-amber-500/10 border-amber-500/50 hover:bg-amber-500/20' 
+                        : 'bg-zinc-900 hover:bg-zinc-800 border-zinc-800 hover:border-orange-500/50'
+                    }`}
                   >
                     <div className="flex flex-col justify-center w-full">
-                       <span className="text-[10px] font-bold text-zinc-300 group-hover:text-white truncate">{preset.label}</span>
-                       <span className="text-[9px] text-zinc-500 group-hover:text-orange-400 truncate">{language === 'TH' ? preset.thSubtitle : preset.subtitle}</span>
+                       <span className={`text-[10px] font-bold truncate ${
+                           preset.id === 'luxury-nordic-masterpiece' ? 'text-amber-400 group-hover:text-amber-300' : 'text-zinc-300 group-hover:text-white'
+                       }`}>{preset.label}</span>
+                       <span className={`text-[9px] truncate ${
+                           preset.id === 'luxury-nordic-masterpiece' ? 'text-amber-500/70 group-hover:text-amber-400' : 'text-zinc-500 group-hover:text-orange-400'
+                       }`}>{language === 'TH' ? preset.thSubtitle : preset.subtitle}</span>
                     </div>
-                    {prompt === preset.prompt && (
-                      <div className="absolute right-2 top-1/2 -translate-y-1/2 w-1.5 h-1.5 bg-orange-500 rounded-full"></div>
-                    )}
                   </button>
                 ))}
              </div>
+          </div>
+
+          {/* CUSTOM RULES / MEMORY */}
+          <div className="space-y-2 border-t border-zinc-800 pt-4">
+             <label className="text-xs font-bold text-zinc-500 flex items-center gap-2">
+               <BookOpen size={12} /> {t.customRules}
+             </label>
+             <textarea
+               value={customRules}
+               onChange={(e) => setCustomRules(e.target.value)}
+               placeholder={t.customRulesPlaceholder}
+               className="w-full h-20 bg-zinc-900/50 border border-zinc-700/50 rounded-lg p-3 text-xs text-zinc-300 placeholder-zinc-600 focus:ring-1 focus:ring-orange-500/50 focus:border-orange-500/50 outline-none resize-none transition-all"
+             />
           </div>
 
           {/* GENERATE ACTION AREA */}
@@ -718,7 +558,6 @@ const App: React.FC = () => {
               )}
             </button>
              
-             {/* New Project Button - Only show if we have data to clear */}
              {(result || selectedImage || prompt) && (
                <button 
                  onClick={() => {
@@ -757,6 +596,13 @@ const App: React.FC = () => {
                error={error} 
                onReset={handleResetResult}
                selectedImage={selectedImage}
+               
+               // Pass Brush Props
+               isMaskMode={isMaskMode}
+               brushSize={brushSize}
+               brushColor={brushColor}
+               onMaskChange={setMaskData}
+               triggerUndo={triggerUndo}
              />
           </div>
       </main>
